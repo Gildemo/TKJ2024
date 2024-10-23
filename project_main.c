@@ -46,7 +46,7 @@ static PIN_State ledState;
 // Pinnien alustukset, molemmille pinneille oma konfiguraatio
 // Vakio BOARD_BUTTON_0 vastaa toista painonappia
 PIN_Config buttonConfig[] = {
-   Board_BUTTON0  | PIN_INPUT_EN | PIN_PULLUP | PIN_IRQ_NEGEDGE,
+   Board_BUTTON1  | PIN_INPUT_EN | PIN_PULLUP | PIN_IRQ_NEGEDGE,
    PIN_TERMINATE // Asetustaulukko lopetetaan aina tällä vakiolla
 };
 
@@ -58,11 +58,27 @@ PIN_Config ledConfig[] = {
 };
 
 
+//void buttonFxn(PIN_Handle handle, PIN_Id pinId) {
+
+    // JTKJ: Teht�v� 1. Vilkuta jompaa kumpaa ledi�
+    // JTKJ: Exercise 1. Blink either led of the device
+    // Vaihdetaan led-pinnin tilaa negaatiolla
+    //   uint_t pinValue = PIN_getOutputValue( Board_LED0 );
+    //   pinValue = !pinValue;
+    //   PIN_setOutputValue( ledHandle, Board_LED0, pinValue );
+//}
+int summa = 0;
+int *summapointter = &summa;
+
 void buttonFxn(PIN_Handle handle, PIN_Id pinId) {
 
     // JTKJ: Teht�v� 1. Vilkuta jompaa kumpaa ledi�
     // JTKJ: Exercise 1. Blink either led of the device
     // Vaihdetaan led-pinnin tilaa negaatiolla
+        *summapointter +=1;
+       if (summa == 3){
+       *summapointter = 0;}
+
        uint_t pinValue = PIN_getOutputValue( Board_LED0 );
        pinValue = !pinValue;
        PIN_setOutputValue( ledHandle, Board_LED0, pinValue );
@@ -101,7 +117,8 @@ Void uartTaskFxn(UArg arg0, UArg arg1) {
         //       Muista tilamuutos
         if(programState == DATA_READY){
             char merkkijono[20];
-                     sprintf(merkkijono, "%10.2f\n\r",ambientLight);
+                     //sprintf(merkkijono, "%10.2f\n\r",ambientLight);
+                    sprintf(merkkijono, "%d\n\r",summa);
                     // System_printf(merkkijono);
                      UART_write(uart,merkkijono, sizeof(merkkijono));
                     // System_flush();
