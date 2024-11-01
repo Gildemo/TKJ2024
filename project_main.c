@@ -45,18 +45,29 @@ static PIN_State ledState;
 
 // Pinnien alustukset, molemmille pinneille oma konfiguraatio
 // Vakio BOARD_BUTTON_0 vastaa toista painonappia
-PIN_Config buttonConfig[] = {
+static PIN_Config buttonConfig[] = {
    Board_BUTTON1  | PIN_INPUT_EN | PIN_PULLUP | PIN_IRQ_NEGEDGE,
    PIN_TERMINATE // Asetustaulukko lopetetaan aina tällä vakiolla
 };
 
 // Vakio Board_LED0 vastaa toista lediä
 
-PIN_Config ledConfig[] = {
+static PIN_Config ledConfig[] = {
    Board_LED0 | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MAX,
    PIN_TERMINATE // Asetustaulukko lopetetaan aina tällä vakiolla
 };
 
+// Sensorin omma virtapinni vakiolla
+static PIN_Config MpuPinConfig[] = {
+    Board_MPU_POWER  | PIN_GPIO_OUTPUT_EN | PIN_GPIO_HIGH | PIN_PUSHPULL | PIN_DRVSTR_MAX,
+    PIN_TERMINATE
+};
+
+//MPU oma i2c
+static const I2CCC26XX_I2CPinCfg i2cMPUCfg = {
+    .pinSDA = Board_I2C0_SDA1,
+    .pinSCL = Board_I2C0_SCL1
+};
 
 //void buttonFxn(PIN_Handle handle, PIN_Id pinId) {
 
@@ -72,17 +83,18 @@ int *summapointter = &summa;
 
 void buttonFxn(PIN_Handle handle, PIN_Id pinId) {
 
-    // JTKJ: Teht�v� 1. Vilkuta jompaa kumpaa ledi�
+    //JTKJ: Teht�v� 1. Vilkuta jompaa kumpaa ledi�
     // JTKJ: Exercise 1. Blink either led of the device
     // Vaihdetaan led-pinnin tilaa negaatiolla
-        *summapointter +=1;
-       if (summa == 3){
-       *summapointter = 0;}
-
+       *summapointter +=1;
        uint_t pinValue = PIN_getOutputValue( Board_LED0 );
-       pinValue = !pinValue;
-       PIN_setOutputValue( ledHandle, Board_LED0, pinValue );
-}
+                         pinValue = !pinValue;
+                         PIN_setOutputValue( ledHandle, Board_LED0, pinValue );
+       if (summa == 2){
+           *summapointter = 0;}
+        }
+
+
 
 /* Task Functions */
 Void uartTaskFxn(UArg arg0, UArg arg1) {
@@ -118,13 +130,17 @@ Void uartTaskFxn(UArg arg0, UArg arg1) {
         if(programState == DATA_READY){
             char merkkijono[20];
                      //sprintf(merkkijono, "%10.2f\n\r",ambientLight);
+                    if (y-akselinkiihtyvyys >500){
+                        merkkijono = ","
                     sprintf(merkkijono, "%d\n\r",summa);
                     // System_printf(merkkijono);
                      UART_write(uart,merkkijono, sizeof(merkkijono));
                     // System_flush();
-                     programState = WAITING;
+                     programState = WAITING;}
 
-        }
+                    if x-akselinkiihtyvyys >500{
+                    merkkijono = "-";
+                    }
         // JTKJ: Exercise 3. Print out sensor data as string to debug window if the state is correct
         //       Remember to modify state
 
@@ -196,7 +212,7 @@ Int main(void) {
 
     // Initialize board
     Board_initGeneral();
-
+    Board_MPU_POWER
     
     // JTKJ: Teht�v� 2. Ota i2c-v�yl� k�ytt��n ohjelmassa
     // JTKJ: Exercise 2. Initialize i2c bus
