@@ -12,6 +12,7 @@
 #include <ti/drivers/PIN.h>
 #include <ti/drivers/pin/PINCC26XX.h>
 #include <ti/drivers/I2C.h>
+#include <ti/drivers/i2c/I2CCC26XX.h>
 #include <ti/drivers/Power.h>
 #include <ti/drivers/power/PowerCC26XX.h>
 #include <ti/drivers/UART.h>
@@ -19,24 +20,32 @@
 /* Board Header files */
 #include "Board.h"
 #include "sensors/opt3001.h"
-
+#include "sensors/mpu9250.h"
 /* Task */
 #define STACKSIZE 2048
 Char sensorTaskStack[STACKSIZE];
 Char uartTaskStack[STACKSIZE];
-enum state { WAITING=1, DATA_READY };
+enum state { WAITING = 1, DATA_READY };
 enum state programState = WAITING;
 
 //tulostettavan merkin alustus
-char merkki;
-char *merkkipointer = &merkki;
+char viesti;
+char *viestipointer = &viesti;
 
-//valon arvon alustus
-double ambientLight = -1000.0;
+
+//button counter nahoittimelle
+int buttoncounter = 0;
+int *bcpointer = &buttoncounter;
+
+//MPU tulosten muuttujien alustus
+float ax, ay, az, gx, gy, gz;
+
 
 // RTOS:n globaalit muuttujat pinnien käyttöön
-static PIN_Handle buttonHandle;
-static PIN_State buttonState;
+static PIN_Handle buttonHandle0;
+static PIN_State buttonState0;
+static PIN_Handle buttonHandle1;
+static PIN_State buttonState1;
 static PIN_Handle ledHandle;
 static PIN_State ledState;
 static PIN_Handle hMpuPin;
@@ -51,6 +60,7 @@ PIN_Config MpuPinConfig[] = {
 // Pinnien alustukset, molemmille pinneille oma konfiguraatio
 // Vakio BOARD_BUTTON_0 vastaa toista painonappia
 PIN_Config buttonConfig[] = {
+   Board_BUTTON0  | PIN_INPUT_EN | PIN_PULLUP | PIN_IRQ_NEGEDGE,
    Board_BUTTON1  | PIN_INPUT_EN | PIN_PULLUP | PIN_IRQ_NEGEDGE,
    PIN_TERMINATE // Asetustaulukko lopetetaan aina tällä vakiolla
 };
@@ -59,30 +69,36 @@ PIN_Config buttonConfig[] = {
 
 PIN_Config ledConfig[] = {
    Board_LED0 | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MAX,
+   Board_LED1 | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MAX,
    PIN_TERMINATE // Asetustaulukko lopetetaan aina tällä vakiolla
 };
 
 // oma I2C väylä
-//static const I2CCC26XX_I2CPinCfg i2cMPUCfg = {
-//    .pinSDA = Board_I2C0_SDA1,
-//    .pinSCL = Board_I2C0_SCL1
-//};
+static const I2CCC26XX_I2CPinCfg i2cMPUCfg = {
+    .pinSDA = Board_I2C0_SDA1,
+    .pinSCL = Board_I2C0_SCL1
+};
 
 
-//button counter nahoittimelle
-int buttoncounter = 0;
-int *bcpointer = &buttoncounter;
 
 void buttonFxn(PIN_Handle handle, PIN_Id pinId) {
 
        *bcpointer +=1;
-       if (buttoncounter == 2){
+       if (buttoncounter == 3){
+           PIN_setOutputValue( ledHandle, Board_LED0, 0);
+           PIN_setOutputValue( ledHandle, Board_LED1, 0);
        *bcpointer = 0;}
 
+       if (buttoncounter == 1){
+       PIN_setOutputValue( ledHandle, Board_LED0, 1);
+       }
+       if (buttoncounter == 2){
+           PIN_setOutputValue( ledHandle, Board_LED1, 1);
+       }
+       }
 
-       PIN_setOutputValue( ledHandle, Board_LED0, buttoncounter );
-
-
+void buttonFxn2(PIN_Handle handle, PIN_Id pinId) {
+    programState = DATA_READY;
 }
 
 /* Task Functions */
@@ -116,12 +132,12 @@ Void uartTaskFxn(UArg arg0, UArg arg1) {
         if(programState == DATA_READY && buttoncounter == 1){
             char merkkijono[20];
 
-                    sprintf(merkkijono, "%10s\n\r",*merkkipointer);
-                    System_printf(*merkkipointer);
+                    sprintf(merkkijono, "%10s\n\r",*viestipointer);
+                    System_printf(*viestipointer);
                     UART_write(uart,merkkijono, sizeof(merkkijono));
                     PIN_setOutputValue( ledHandle, Board_LED0, 0 );
                     *bcpointer = 0;
-                    *merkkipointer = '\0';
+                    *viestipointer = '\0';
                     System_flush();
                     programState = WAITING;
                     }
@@ -131,39 +147,64 @@ Void uartTaskFxn(UArg arg0, UArg arg1) {
     }
 }
 
+//SensorFxn from mpu9250_example.c from jtkj-sensortag-examples
 Void sensorTaskFxn(UArg arg0, UArg arg1) {
 
-    I2C_Handle      i2c;
-    I2C_Params      i2cParams;
-    I2C_Transaction i2cMessage;
+    float ax, ay, az, gx, gy, gz;
 
-    // Alustetaan i2c-väylä
-       I2C_Params_init(&i2cParams);
-       i2cParams.bitRate = I2C_400kHz;
-       // Avataan yhteys
-          i2c = I2C_open(Board_I2C_TMP, &i2cParams);
-          if (i2c == NULL) {
-             System_abort("Error Initializing I2C\n");
-          }
+    I2C_Handle i2cMPU; // Own i2c-interface for MPU9250 sensor
+    I2C_Params i2cMPUParams;
 
-          Task_sleep(100000 / Clock_tickPeriod);
-          opt3001_setup(&i2c);
+    I2C_Params_init(&i2cMPUParams);
+    i2cMPUParams.bitRate = I2C_400kHz;
+    // Note the different configuration below
+    i2cMPUParams.custom = (uintptr_t)&i2cMPUCfg;
 
+    // MPU power on
+    PIN_setOutputValue(hMpuPin,Board_MPU_POWER, Board_MPU_POWER_ON);
 
-    while (1) {
-        if(programState == WAITING){
+    // Wait 100ms for the MPU sensor to power up
+    Task_sleep(100000 / Clock_tickPeriod);
+    System_printf("MPU9250: Power ON\n");
+    System_flush();
 
-           ambientLight = opt3001_get_data(&i2c);
-           if (ambientLight > 0 && ambientLight < 30){
-               *merkkipointer = ",";
-           }
-           programState = DATA_READY;
-        }
-           Task_sleep(1000000 / Clock_tickPeriod);
-
+    // MPU open i2c
+    i2cMPU = I2C_open(Board_I2C, &i2cMPUParams);
+    if (i2cMPU == NULL) {
+        System_abort("Error Initializing I2CMPU\n");
     }
+
+    // MPU setup and calibration
+    System_printf("MPU9250: Setup and calibration...\n");
+    System_flush();
+
+    mpu9250_setup(&i2cMPU);
+
+    System_printf("MPU9250: Setup and calibration OK\n");
+    System_flush();
+
+    // Loop forever
+    while (1) {
+
+        // MPU ask data
+        mpu9250_get_data(&i2cMPU, &ax, &ay, &az, &gx, &gy, &gz);
+        char merkkijono[25];
+        sprintf(merkkijono, "kiihtyvyys x = %2.3f\n", ax);
+        System_printf(merkkijono);
+        System_flush();
+        // Sleep 100ms
+        Task_sleep(100000 / Clock_tickPeriod);
+    }
+
+    // Program never gets here..
+    // MPU close i2c
+    // I2C_close(i2cMPU);
+    // MPU power off
+    // PIN_setOutputValue(hMpuPin,Board_MPU_POWER, Board_MPU_POWER_OFF);
 }
-Int main(void) {
+
+
+    Int main(void) {
 
     // Task variables
     Task_Handle sensorTaskHandle;
@@ -184,15 +225,26 @@ Int main(void) {
     }
 
     // Painonappi käyttöön ohjelmassa
-    buttonHandle = PIN_open(&buttonState, buttonConfig);
-    if(!buttonHandle) {
+    buttonHandle0 = PIN_open(&buttonState0, buttonConfig);
+    if(!buttonHandle0) {
        System_abort("Error initializing button pin\n");
     }
 
     // Painonapille keskeytyksen käsittellijä
-    if (PIN_registerIntCb(buttonHandle, &buttonFxn) != 0) {
+    if (PIN_registerIntCb(buttonHandle0, &buttonFxn) != 0) {
        System_abort("Error registering button callback function");
     }
+
+    buttonHandle1 = PIN_open(&buttonState1, buttonConfig);
+        if(!buttonHandle1) {
+           System_abort("Error initializing button pin\n");
+        }
+
+        // Painonapille keskeytyksen käsittellijä
+        if (PIN_registerIntCb(buttonHandle1, &buttonFxn) != 0) {
+           System_abort("Error registering button callback function");
+        }
+
 
     /* Task */
     Task_Params_init(&sensorTaskParams);
