@@ -86,15 +86,16 @@ static const I2CCC26XX_I2CPinCfg i2cMPUCfg = {
 
 void buttonFxn(PIN_Handle handle, PIN_Id pinId) {
 
-
+       programState = WAITING;
        *bcpointer +=1;
        if (buttoncounter == 3){
                   PIN_setOutputValue( ledHandle, Board_LED0, 0);
                   PIN_setOutputValue( ledHandle, Board_LED1, 0);
-              *bcpointer = 0;}
+              *bcpointer = 0;
+       }
 
        if (buttoncounter == 0){
-           strcpy(viesti,"space");
+           strcpy(viesti," \r\n\0");
            System_printf("buttoncounter: %d\n", buttoncounter);
            System_flush();
        }
@@ -102,17 +103,17 @@ void buttonFxn(PIN_Handle handle, PIN_Id pinId) {
 
        if (buttoncounter == 1){
            PIN_setOutputValue( ledHandle, Board_LED0, 1);
-           strcpy(viesti,"pilkku");
+           strcpy(viesti,".\r\n\0");
            System_printf("buttoncounter: %d\n", buttoncounter);
            System_flush();
        }
        if (buttoncounter == 2){
            PIN_setOutputValue( ledHandle, Board_LED1, 1);
-           strcpy(viesti,"viiva");
+           strcpy(viesti,"-\r\n\0");
            System_printf("buttoncounter: %d\n", buttoncounter);
            System_flush();
        }
-       programState = WAITING;
+
 }
 
 void buttonFxn2(PIN_Handle handle, PIN_Id pinId) {
@@ -150,15 +151,15 @@ Void uartTaskFxn(UArg arg0, UArg arg1) {
 
         //       Muista tilamuutos
         if(programState == DATA_READY){
-            char merkkijono[20];
+            char merkkijono[4];
 
-                    sprintf(merkkijono, "%10s\n\r",viesti);
-                    System_printf("viesti:%10s",merkkijono);
+                    sprintf(merkkijono, "%s",viesti);
+                    System_printf("viesti:%s",merkkijono);
                     UART_write(uart,merkkijono, sizeof(merkkijono));
                     PIN_setOutputValue( ledHandle, Board_LED0, 0 );
                     PIN_setOutputValue( ledHandle, Board_LED1, 0 );
                     *bcpointer = 0;
-                    strcpy(viesti,"space");
+                    strcpy(viesti," \r\n\0");
                     System_flush();
                     programState = IDLE;
                     }
