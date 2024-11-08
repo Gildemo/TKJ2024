@@ -25,12 +25,12 @@
 #define STACKSIZE 2048
 Char sensorTaskStack[STACKSIZE];
 Char uartTaskStack[STACKSIZE];
-enum state { WAITING = 1, DATA_READY };
-enum state programState = WAITING;
+enum state { IDLE =1 ,WAITING, DATA_READY };
+enum state programState = IDLE;
 
 //tulostettavan merkin alustus
-char viesti;
-char *viestipointer = &viesti;
+char viesti  [] = "ei viestia";
+//char *viestipointer = &viesti;
 
 
 //button counter nahoittimelle
@@ -59,8 +59,11 @@ PIN_Config MpuPinConfig[] = {
 
 // Pinnien alustukset, molemmille pinneille oma konfiguraatio
 // Vakio BOARD_BUTTON_0 vastaa toista painonappia
-PIN_Config buttonConfig[] = {
+PIN_Config button0Config[] = {
    Board_BUTTON0  | PIN_INPUT_EN | PIN_PULLUP | PIN_IRQ_NEGEDGE,
+   PIN_TERMINATE // Asetustaulukko lopetetaan aina tällä vakiolla
+};
+PIN_Config button1Config[] = {
    Board_BUTTON1  | PIN_INPUT_EN | PIN_PULLUP | PIN_IRQ_NEGEDGE,
    PIN_TERMINATE // Asetustaulukko lopetetaan aina tällä vakiolla
 };
@@ -83,22 +86,39 @@ static const I2CCC26XX_I2CPinCfg i2cMPUCfg = {
 
 void buttonFxn(PIN_Handle handle, PIN_Id pinId) {
 
+
        *bcpointer +=1;
        if (buttoncounter == 3){
-           PIN_setOutputValue( ledHandle, Board_LED0, 0);
-           PIN_setOutputValue( ledHandle, Board_LED1, 0);
-       *bcpointer = 0;}
+                  PIN_setOutputValue( ledHandle, Board_LED0, 0);
+                  PIN_setOutputValue( ledHandle, Board_LED1, 0);
+              *bcpointer = 0;}
+
+       if (buttoncounter == 0){
+           strcpy(viesti,"space");
+           System_printf("buttoncounter: %d\n", buttoncounter);
+           System_flush();
+       }
+
 
        if (buttoncounter == 1){
-       PIN_setOutputValue( ledHandle, Board_LED0, 1);
+           PIN_setOutputValue( ledHandle, Board_LED0, 1);
+           strcpy(viesti,"pilkku");
+           System_printf("buttoncounter: %d\n", buttoncounter);
+           System_flush();
        }
        if (buttoncounter == 2){
            PIN_setOutputValue( ledHandle, Board_LED1, 1);
+           strcpy(viesti,"viiva");
+           System_printf("buttoncounter: %d\n", buttoncounter);
+           System_flush();
        }
-       }
+       programState = WAITING;
+}
 
 void buttonFxn2(PIN_Handle handle, PIN_Id pinId) {
     programState = DATA_READY;
+    System_printf("button2");
+    System_flush();
 }
 
 /* Task Functions */
@@ -129,20 +149,20 @@ Void uartTaskFxn(UArg arg0, UArg arg1) {
     while (1) {
 
         //       Muista tilamuutos
-        if(programState == DATA_READY && buttoncounter == 1){
+        if(programState == DATA_READY){
             char merkkijono[20];
 
-                    sprintf(merkkijono, "%10s\n\r",*viestipointer);
-                    System_printf(*viestipointer);
+                    sprintf(merkkijono, "%10s\n\r",viesti);
+                    System_printf("viesti:%10s",merkkijono);
                     UART_write(uart,merkkijono, sizeof(merkkijono));
                     PIN_setOutputValue( ledHandle, Board_LED0, 0 );
+                    PIN_setOutputValue( ledHandle, Board_LED1, 0 );
                     *bcpointer = 0;
-                    *viestipointer = '\0';
+                    strcpy(viesti,"space");
                     System_flush();
-                    programState = WAITING;
+                    programState = IDLE;
                     }
 
-        Task_sleep(1000000 / Clock_tickPeriod);
 
     }
 }
@@ -188,9 +208,9 @@ Void sensorTaskFxn(UArg arg0, UArg arg1) {
 
         // MPU ask data
         mpu9250_get_data(&i2cMPU, &ax, &ay, &az, &gx, &gy, &gz);
-        char merkkijono[25];
-        sprintf(merkkijono, "kiihtyvyys x = %2.3f\n", ax);
-        System_printf(merkkijono);
+        char state[25];
+        sprintf(state, "state on %d\n", programState);
+        System_printf(state);
         System_flush();
         // Sleep 100ms
         Task_sleep(100000 / Clock_tickPeriod);
@@ -225,7 +245,7 @@ Void sensorTaskFxn(UArg arg0, UArg arg1) {
     }
 
     // Painonappi käyttöön ohjelmassa
-    buttonHandle0 = PIN_open(&buttonState0, buttonConfig);
+    buttonHandle0 = PIN_open(&buttonState0, button0Config);
     if(!buttonHandle0) {
        System_abort("Error initializing button pin\n");
     }
@@ -235,13 +255,13 @@ Void sensorTaskFxn(UArg arg0, UArg arg1) {
        System_abort("Error registering button callback function");
     }
 
-    buttonHandle1 = PIN_open(&buttonState1, buttonConfig);
+    buttonHandle1 = PIN_open(&buttonState1, button1Config);
         if(!buttonHandle1) {
            System_abort("Error initializing button pin\n");
         }
 
         // Painonapille keskeytyksen käsittellijä
-        if (PIN_registerIntCb(buttonHandle1, &buttonFxn) != 0) {
+        if (PIN_registerIntCb(buttonHandle1, &buttonFxn2) != 0) {
            System_abort("Error registering button callback function");
         }
 
