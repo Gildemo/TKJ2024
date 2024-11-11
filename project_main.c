@@ -22,7 +22,7 @@
 #include "sensors/opt3001.h"
 #include "sensors/mpu9250.h"
 /* Task */
-#define STACKSIZE 2048
+#define STACKSIZE 4096
 Char sensorTaskStack[STACKSIZE];
 Char uartTaskStack[STACKSIZE];
 enum state { IDLE =1 ,WAITING, DATA_READY };
@@ -123,7 +123,7 @@ void buttonFxn2(PIN_Handle handle, PIN_Id pinId) {
 }
 
 /* Task Functions */
-Void uartTaskFxn(UArg arg0, UArg arg1) {
+void uartTaskFxn(UArg arg0, UArg arg1) {
 
 
 
@@ -162,14 +162,13 @@ Void uartTaskFxn(UArg arg0, UArg arg1) {
                     strcpy(viesti," \r\n\0");
                     System_flush();
                     programState = IDLE;
-                    }
-
-
+        }
+        Task_sleep(100000 / Clock_tickPeriod);
     }
 }
 
 //SensorFxn from mpu9250_example.c from jtkj-sensortag-examples
-Void sensorTaskFxn(UArg arg0, UArg arg1) {
+void sensorTaskFxn(UArg arg0, UArg arg1) {
 
     float ax, ay, az, gx, gy, gz;
 
@@ -209,9 +208,9 @@ Void sensorTaskFxn(UArg arg0, UArg arg1) {
 
         // MPU ask data
         mpu9250_get_data(&i2cMPU, &ax, &ay, &az, &gx, &gy, &gz);
-        char state[25];
-        sprintf(state, "state on %d\n", programState);
-        System_printf(state);
+        char arvot[25];
+        sprintf(arvot, "x-kiihtyvyy %2.3f y-kiihtyvyys %2.3f\n", ax, ay);
+        System_printf(arvot);
         System_flush();
         // Sleep 100ms
         Task_sleep(100000 / Clock_tickPeriod);
