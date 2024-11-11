@@ -25,8 +25,7 @@
 #define STACKSIZE 2048
 Char sensorTaskStack[STACKSIZE];
 Char uartTaskStack[STACKSIZE];
-Char buzzerTaskStack[STACKSIZE];
-enum state { IDLE =1, WAITING, DATA_READY };
+enum state { IDLE =1 ,WAITING, DATA_READY };
 enum state programState = IDLE;
 
 //tulostettavan merkin alustus
@@ -51,8 +50,6 @@ static PIN_Handle ledHandle;
 static PIN_State ledState;
 static PIN_Handle hMpuPin;
 static PIN_State MpuPinState;
-static PIN_Handle hBuzzer;
-static PIN_State sBuzzer;
 
 // MPU power pin
 PIN_Config MpuPinConfig[] = {
@@ -77,12 +74,6 @@ PIN_Config ledConfig[] = {
    Board_LED0 | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MAX,
    Board_LED1 | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MAX,
    PIN_TERMINATE // Asetustaulukko lopetetaan aina tällä vakiolla
-};
-
-
-PIN_Config cBuzzer[] = {
-  Board_BUZZER | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MAX,
-  PIN_TERMINATE
 };
 
 // oma I2C väylä
