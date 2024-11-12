@@ -21,10 +21,12 @@
 #include "Board.h"
 #include "sensors/opt3001.h"
 #include "sensors/mpu9250.h"
+#include "sensors/buzzer.h"
 /* Task */
-#define STACKSIZE 4096
+#define STACKSIZE 2048
 Char sensorTaskStack[STACKSIZE];
 Char uartTaskStack[STACKSIZE];
+Char buzzerTaskStack[STACKSIZE];
 enum state { IDLE =1 ,WAITING, DATA_READY };
 enum state programState = IDLE;
 
@@ -50,6 +52,8 @@ static PIN_Handle ledHandle;
 static PIN_State ledState;
 static PIN_Handle hMpuPin;
 static PIN_State MpuPinState;
+static PIN_Handle hBuzzer;
+static PIN_State sBuzzer;
 
 // MPU power pin
 PIN_Config MpuPinConfig[] = {
@@ -82,7 +86,11 @@ static const I2CCC26XX_I2CPinCfg i2cMPUCfg = {
     .pinSCL = Board_I2C0_SCL1
 };
 
-
+// buzzer
+PIN_Config cBuzzer[] = {
+  Board_BUZZER | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MAX,
+  PIN_TERMINATE
+};
 
 void buttonFxn(PIN_Handle handle, PIN_Id pinId) {
 
@@ -153,15 +161,15 @@ void uartTaskFxn(UArg arg0, UArg arg1) {
         if(programState == DATA_READY){
             char merkkijono[4];
 
-                    sprintf(merkkijono, "%s",viesti);
-                    System_printf("viesti:%s",merkkijono);
-                    UART_write(uart,merkkijono, sizeof(merkkijono));
-                    PIN_setOutputValue( ledHandle, Board_LED0, 0 );
-                    PIN_setOutputValue( ledHandle, Board_LED1, 0 );
-                    *bcpointer = 0;
-                    strcpy(viesti," \r\n\0");
-                    System_flush();
-                    programState = IDLE;
+            sprintf(merkkijono, "%s",viesti);
+            System_printf("viesti:%s",merkkijono);
+            UART_write(uart,merkkijono, sizeof(merkkijono));
+            PIN_setOutputValue( ledHandle, Board_LED0, 0 );
+            PIN_setOutputValue( ledHandle, Board_LED1, 0 );
+            *bcpointer = 0;
+            strcpy(viesti," \r\n\0");
+            System_flush();
+            programState = IDLE;
         }
         Task_sleep(100000 / Clock_tickPeriod);
     }
@@ -224,13 +232,30 @@ void sensorTaskFxn(UArg arg0, UArg arg1) {
 }
 
 
-    Int main(void) {
+// taskFxn from buzzer_example.c from jtkj-sensortag-examples
+Void buzzerTaskFxn(UArg arg0, UArg arg1) {
+
+  while (1) {
+    buzzerOpen(hBuzzer);
+    buzzerSetFrequency(2000);
+    Task_sleep(50000 / Clock_tickPeriod);
+    buzzerClose();
+
+    Task_sleep(950000 / Clock_tickPeriod);
+  }
+
+}
+
+
+Int main(void) {
 
     // Task variables
     Task_Handle sensorTaskHandle;
     Task_Params sensorTaskParams;
     Task_Handle uartTaskHandle;
     Task_Params uartTaskParams;
+    Task_Handle buzzerTaskHandle;
+    Task_Params buzzerTaskParams;
 
     // Initialize board, I2C and UART
     Board_initGeneral();
@@ -248,6 +273,12 @@ void sensorTaskFxn(UArg arg0, UArg arg1) {
     buttonHandle0 = PIN_open(&buttonState0, button0Config);
     if(!buttonHandle0) {
        System_abort("Error initializing button pin\n");
+    }
+
+    // Buzzer käyttöön ohjelmassa
+    hBuzzer = PIN_open(&sBuzzer, cBuzzer);
+    if (hBuzzer == NULL) {
+      System_abort("Pin open failed!");
     }
 
     // Painonapille keskeytyksen käsittellijä
@@ -284,6 +315,17 @@ void sensorTaskFxn(UArg arg0, UArg arg1) {
     if (uartTaskHandle == NULL) {
         System_abort("Task create failed!");
     }
+
+    // buzzer task
+    Task_Params_init(&buzzerTaskParams);
+    buzzerTaskParams.stackSize = STACKSIZE;
+    buzzerTaskParams.stack = &buzzerTaskStack;
+    buzzerTaskParams.priority=2;
+    buzzerTaskHandle = Task_create(buzzerTaskFxn, &buzzerTaskParams, NULL);
+    if (buzzerTaskHandle == NULL) {
+       System_abort("Task create failed!");
+     }
+
 
     /* Sanity check */
     System_printf("Hello world!\n");
