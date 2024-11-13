@@ -97,18 +97,15 @@ void buttonFxn(PIN_Handle handle, PIN_Id pinId) {
        programState = WAITING;
        *bcpointer +=1;
        if (buttoncounter == 3){
-                  PIN_setOutputValue( ledHandle, Board_LED0, 0);
-                  PIN_setOutputValue( ledHandle, Board_LED1, 0);
-              *bcpointer = 0;
+          PIN_setOutputValue( ledHandle, Board_LED0, 0);
+          PIN_setOutputValue( ledHandle, Board_LED1, 0);
+          *bcpointer = 0;
        }
-
        if (buttoncounter == 0){
            strcpy(viesti," \r\n\0");
            System_printf("buttoncounter: %d\n", buttoncounter);
            System_flush();
        }
-
-
        if (buttoncounter == 1){
            PIN_setOutputValue( ledHandle, Board_LED0, 1);
            strcpy(viesti,".\r\n\0");
@@ -132,8 +129,6 @@ void buttonFxn2(PIN_Handle handle, PIN_Id pinId) {
 
 /* Task Functions */
 void uartTaskFxn(UArg arg0, UArg arg1) {
-
-
 
        // UART-kirjaston asetukset
        UART_Handle uart;
@@ -160,7 +155,6 @@ void uartTaskFxn(UArg arg0, UArg arg1) {
         //       Muista tilamuutos
         if(programState == DATA_READY){
             char merkkijono[4];
-
             sprintf(merkkijono, "%s",viesti);
             System_printf("viesti:%s",merkkijono);
             UART_write(uart,merkkijono, sizeof(merkkijono));
@@ -237,11 +231,11 @@ Void buzzerTaskFxn(UArg arg0, UArg arg1) {
 
   while (1) {
     buzzerOpen(hBuzzer);
-    buzzerSetFrequency(2000);
+    buzzerSetFrequency(1000);
     Task_sleep(50000 / Clock_tickPeriod);
     buzzerClose();
 
-    Task_sleep(950000 / Clock_tickPeriod);
+    Task_sleep(950000 / Clock_tickPeriod); // piippaa nopeasti, melkein yhtäjaksoisesti, jos ottaa pois
   }
 
 }
