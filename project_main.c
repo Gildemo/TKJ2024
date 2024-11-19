@@ -29,7 +29,7 @@ enum state { IDLE =1 ,WAITING, DATA_READY, MESSAGE_READY };
 enum state programState = IDLE;
 
 //tulostettavan merkin alustus
-char viesti  [] = "ei viestia";
+char viesti [] = "ei viestia";
 //char *viestipointer = &viesti;
 
 
@@ -40,7 +40,8 @@ int mflag1 = 0;
 int mflag2 = 0;
 //MPU tulosten muuttujien alustus
 float ax, ay, az, gx, gy, gz;
-
+//vastaanotettavan viestin alustus
+char input;
 
 // RTOS:n globaalit muuttujat pinnien käyttöön
 static PIN_Handle buttonHandle0;
@@ -120,6 +121,7 @@ void buttonFxn2(PIN_Handle handle, PIN_Id pinId) {
     programState = DATA_READY;
     System_printf("button2");
     System_flush();
+
 }
 
 /* Task Functions */
@@ -133,14 +135,15 @@ void uartTaskFxn(UArg arg0, UArg arg1) {
 
        // Alustetaan sarjaliikenne
        UART_Params_init(&uartParams);
-       uartParams.writeDataMode = UART_DATA_TEXT;
-       uartParams.readDataMode = UART_DATA_TEXT;
-       uartParams.readEcho = UART_ECHO_OFF;
-       uartParams.readMode=UART_MODE_BLOCKING;
-       uartParams.baudRate = 9600; // nopeus 9600baud
-       uartParams.dataLength = UART_LEN_8; // 8
-       uartParams.parityType = UART_PAR_NONE; // n
-       uartParams.stopBits = UART_STOP_ONE; // 1
+              uartParams.writeDataMode = UART_DATA_TEXT;
+              uartParams.readDataMode = UART_DATA_TEXT;
+              uartParams.readEcho = UART_ECHO_OFF;
+              uartParams.readMode=UART_MODE_BLOCKING;
+              uartParams.baudRate = 9600; // nopeus 9600baud
+              uartParams.dataLength = UART_LEN_8; // 8
+              uartParams.parityType = UART_PAR_NONE; // n
+              uartParams.stopBits = UART_STOP_ONE; // 1
+
 
        // Avataan yhteys laitteen sarjaporttiin vakiossa Board_UART0
        uart = UART_open(Board_UART0, &uartParams);
@@ -148,8 +151,22 @@ void uartTaskFxn(UArg arg0, UArg arg1) {
           System_abort("Error opening the UART");}
 
     while (1) {
-
         //       Muista tilamuutos
+        if(programState == IDLE){
+            char piste = '.';
+            char viiva = '-';
+            UART_read(uart, &input, 1);
+            if (input == piste){
+                System_printf ("piste");
+                System_flush();
+            }
+            if (input == viiva){
+                System_printf ("viiva");
+                System_flush();
+            }
+
+        }
+
         if(programState == DATA_READY){
             char merkkijono[4];
 
@@ -272,9 +289,9 @@ void sensorTaskFxn(UArg arg0, UArg arg1) {
         // MPU ask data
         mpu9250_get_data(&i2cMPU, &ax, &ay, &az, &gx, &gy, &gz);
         char arvot[25];
-        sprintf(arvot, "z-kiihtyvyy %2.3f y-kiihtyvyys %2.3f\n", az, ay);
-        System_printf(arvot);
-        System_flush();
+        //sprintf(arvot, "z-kiihtyvyy %2.3f y-kiihtyvyys %2.3f\n", az, ay);
+        //System_printf(arvot);
+        //System_flush();
         if (buttoncounter == 1 && abs(az) >= 2.0){
             mflag1 = 1;
             mflag2 = 0;
