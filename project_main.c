@@ -164,7 +164,9 @@ void uartTaskFxn(UArg arg0, UArg arg1) {
                 System_printf ("viiva");
                 System_flush();
             }
+            if (input == \0){
 
+            }
         }
 
         if(programState == DATA_READY){
