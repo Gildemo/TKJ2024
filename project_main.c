@@ -1,6 +1,6 @@
 /* C Standard library */
 #include <stdio.h>
-
+#include <stdlib.h>
 /* XDCtools files */
 #include <xdc/std.h>
 #include <xdc/runtime/System.h>
@@ -21,27 +21,27 @@
 #include "Board.h"
 #include "sensors/opt3001.h"
 #include "sensors/mpu9250.h"
-#include "sensors/buzzer.h"
 /* Task */
-#define STACKSIZE 2048
+#define STACKSIZE 4096
 Char sensorTaskStack[STACKSIZE];
 Char uartTaskStack[STACKSIZE];
-Char buzzerTaskStack[STACKSIZE];
-enum state { IDLE =1 ,WAITING, DATA_READY };
+enum state { IDLE =1 ,WAITING, DATA_READY, MESSAGE_READY, READING };
 enum state programState = IDLE;
 
 //tulostettavan merkin alustus
-char viesti  [] = "ei viestia";
+char viesti [] = "ei viestia";
 //char *viestipointer = &viesti;
 
 
 //button counter nahoittimelle
 int buttoncounter = 0;
 int *bcpointer = &buttoncounter;
-
+int mflag1 = 0;
+int mflag2 = 0;
 //MPU tulosten muuttujien alustus
 float ax, ay, az, gx, gy, gz;
-
+//vastaanotettavan viestin alustus
+char input;
 
 // RTOS:n globaalit muuttujat pinnien käyttöön
 static PIN_Handle buttonHandle0;
@@ -52,8 +52,6 @@ static PIN_Handle ledHandle;
 static PIN_State ledState;
 static PIN_Handle hMpuPin;
 static PIN_State MpuPinState;
-static PIN_Handle hBuzzer;
-static PIN_State sBuzzer;
 
 // MPU power pin
 PIN_Config MpuPinConfig[] = {
@@ -86,21 +84,13 @@ static const I2CCC26XX_I2CPinCfg i2cMPUCfg = {
     .pinSCL = Board_I2C0_SCL1
 };
 
-// buzzer
-PIN_Config cBuzzer[] = {
-  Board_BUZZER | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MAX,
-  PIN_TERMINATE
-};
+
 
 void buttonFxn(PIN_Handle handle, PIN_Id pinId) {
 
        programState = WAITING;
        *bcpointer +=1;
-       if (buttoncounter == 3){
-          PIN_setOutputValue( ledHandle, Board_LED0, 0);
-          PIN_setOutputValue( ledHandle, Board_LED1, 0);
-          *bcpointer = 0;
-       }
+
        if (buttoncounter == 0){
            strcpy(viesti," \r\n\0");
            System_printf("buttoncounter: %d\n", buttoncounter);
@@ -113,22 +103,35 @@ void buttonFxn(PIN_Handle handle, PIN_Id pinId) {
            System_flush();
        }
        if (buttoncounter == 2){
+           PIN_setOutputValue( ledHandle, Board_LED0, 0);
            PIN_setOutputValue( ledHandle, Board_LED1, 1);
            strcpy(viesti,"-\r\n\0");
            System_printf("buttoncounter: %d\n", buttoncounter);
            System_flush();
        }
+       if (buttoncounter == 3){
+           programState = READING;
+           PIN_setOutputValue( ledHandle, Board_LED0, 1);
+           PIN_setOutputValue( ledHandle, Board_LED1, 1);
 
+           }
+       if (buttoncounter == 4){
+           PIN_setOutputValue( ledHandle, Board_LED0, 0);
+           PIN_setOutputValue( ledHandle, Board_LED1, 0);
+           *bcpointer = 0;
+       }
 }
-
 void buttonFxn2(PIN_Handle handle, PIN_Id pinId) {
     programState = DATA_READY;
     System_printf("button2");
     System_flush();
+
 }
 
 /* Task Functions */
 void uartTaskFxn(UArg arg0, UArg arg1) {
+
+
 
        // UART-kirjaston asetukset
        UART_Handle uart;
@@ -136,14 +139,15 @@ void uartTaskFxn(UArg arg0, UArg arg1) {
 
        // Alustetaan sarjaliikenne
        UART_Params_init(&uartParams);
-       uartParams.writeDataMode = UART_DATA_TEXT;
-       uartParams.readDataMode = UART_DATA_TEXT;
-       uartParams.readEcho = UART_ECHO_OFF;
-       uartParams.readMode=UART_MODE_BLOCKING;
-       uartParams.baudRate = 9600; // nopeus 9600baud
-       uartParams.dataLength = UART_LEN_8; // 8
-       uartParams.parityType = UART_PAR_NONE; // n
-       uartParams.stopBits = UART_STOP_ONE; // 1
+              uartParams.writeDataMode = UART_DATA_TEXT;
+              uartParams.readDataMode = UART_DATA_TEXT;
+              uartParams.readEcho = UART_ECHO_OFF;
+              uartParams.readMode=UART_MODE_BLOCKING;
+              uartParams.baudRate = 9600; // nopeus 9600baud
+              uartParams.dataLength = UART_LEN_8; // 8
+              uartParams.parityType = UART_PAR_NONE; // n
+              uartParams.stopBits = UART_STOP_ONE; // 1
+
 
        // Avataan yhteys laitteen sarjaporttiin vakiossa Board_UART0
        uart = UART_open(Board_UART0, &uartParams);
@@ -151,20 +155,103 @@ void uartTaskFxn(UArg arg0, UArg arg1) {
           System_abort("Error opening the UART");}
 
     while (1) {
-
         //       Muista tilamuutos
+        if(programState == READING){
+            char piste = '.';
+            char viiva = '-';
+            UART_read(uart, &input, 1);
+            PIN_setOutputValue( ledHandle, Board_LED0, 0);
+            PIN_setOutputValue( ledHandle, Board_LED1, 0);
+            Task_sleep(500000 / Clock_tickPeriod);
+            if (input == piste){
+                PIN_setOutputValue( ledHandle, Board_LED0, 1);
+                Task_sleep(500000 / Clock_tickPeriod);
+                PIN_setOutputValue( ledHandle, Board_LED0, 0);
+            }
+            if (input == viiva){
+                PIN_setOutputValue( ledHandle, Board_LED1, 1);
+                Task_sleep(500000 / Clock_tickPeriod);
+                PIN_setOutputValue( ledHandle, Board_LED1, 0);
+            }
+
+        }
+
         if(programState == DATA_READY){
             char merkkijono[4];
-            sprintf(merkkijono, "%s",viesti);
-            System_printf("viesti:%s",merkkijono);
-            UART_write(uart,merkkijono, sizeof(merkkijono));
+
+                    sprintf(merkkijono, "%s",viesti);
+                    System_printf("viesti:%s",merkkijono);
+                    UART_write(uart,merkkijono, sizeof(merkkijono));
+                    PIN_setOutputValue( ledHandle, Board_LED0, 0 );
+                    PIN_setOutputValue( ledHandle, Board_LED1, 0 );
+                    *bcpointer = 0;
+                    strcpy(viesti," \r\n\0");
+                    System_flush();
+                    programState = IDLE;
+        }
+        if(programState == MESSAGE_READY && mflag1 == 1){
+            Task_sleep(50000 / Clock_tickPeriod);
+            UART_write(uart,".\r\n\0",4);
+            Task_sleep(50000 / Clock_tickPeriod) ;
+            UART_write(uart,".\r\n\0",4);
+            Task_sleep(50000 / Clock_tickPeriod);
+            UART_write(uart,".\r\n\0",4);
+            Task_sleep(50000 / Clock_tickPeriod);
+            UART_write(uart," \r\n\0",4);
+            Task_sleep(50000 / Clock_tickPeriod);
+            UART_write(uart,"-\r\n\0",4);
+            Task_sleep(50000 / Clock_tickPeriod);
+            UART_write(uart,"-\r\n\0",4);
+            Task_sleep(50000 / Clock_tickPeriod);
+            UART_write(uart,"-\r\n\0",4);
+            Task_sleep(50000 / Clock_tickPeriod);
+            UART_write(uart," \r\n\0",4);
+            Task_sleep(50000 / Clock_tickPeriod);
+            UART_write(uart,".\r\n\0",4);
+            Task_sleep(50000 / Clock_tickPeriod);
+            UART_write(uart,".\r\n\0",4);
+            Task_sleep(50000 / Clock_tickPeriod);
+            UART_write(uart,".\r\n\0",4);
+            Task_sleep(50000 / Clock_tickPeriod);
+            UART_write(uart," \r\n\0",4);
+            Task_sleep(50000 / Clock_tickPeriod);
+            UART_write(uart," \r\n\0",4);
+            Task_sleep(50000 / Clock_tickPeriod);
+            System_flush();
+            programState = IDLE;
+            PIN_setOutputValue( ledHandle, Board_LED0, 0 );
+            *bcpointer = 0;
+            strcpy(viesti," \r\n\0");
+        }
+        if((programState == MESSAGE_READY && mflag2 == 1)){
+            Task_sleep(50000 / Clock_tickPeriod);
+            UART_write(uart,"-\r\n\0",4);
+            Task_sleep(50000 / Clock_tickPeriod);
+            UART_write(uart,"-\r\n\0",4);
+            Task_sleep(50000 / Clock_tickPeriod);
+            UART_write(uart,"-\r\n\0",4);
+            Task_sleep(50000 / Clock_tickPeriod);
+            UART_write(uart," \r\n\0",4);
+            Task_sleep(50000 / Clock_tickPeriod);
+            UART_write(uart,"-\r\n\0",4);
+            Task_sleep(50000 / Clock_tickPeriod);
+            UART_write(uart,".\r\n\0",4);
+            Task_sleep(50000 / Clock_tickPeriod);
+            UART_write(uart,"-\r\n\0",4);
+            Task_sleep(50000 / Clock_tickPeriod);
+            UART_write(uart," \r\n\0",4);
+            Task_sleep(50000 / Clock_tickPeriod);
+            UART_write(uart," \r\n\0",4);
+            Task_sleep(50000 / Clock_tickPeriod);
+            System_flush();
+            programState = IDLE;
             PIN_setOutputValue( ledHandle, Board_LED0, 0 );
             PIN_setOutputValue( ledHandle, Board_LED1, 0 );
             *bcpointer = 0;
             strcpy(viesti," \r\n\0");
-            System_flush();
-            programState = IDLE;
+
         }
+
         Task_sleep(100000 / Clock_tickPeriod);
     }
 }
@@ -210,10 +297,20 @@ void sensorTaskFxn(UArg arg0, UArg arg1) {
 
         // MPU ask data
         mpu9250_get_data(&i2cMPU, &ax, &ay, &az, &gx, &gy, &gz);
-        char arvot[25];
-        sprintf(arvot, "x-kiihtyvyy %2.3f y-kiihtyvyys %2.3f\n", ax, ay);
-        System_printf(arvot);
-        System_flush();
+        //char arvot[25];
+        //sprintf(arvot, "z-kiihtyvyy %2.3f y-kiihtyvyys %2.3f\n", az, ay);
+        //System_printf(arvot);
+        //System_flush();
+        if (buttoncounter == 1 && abs(az) >= 2.0){
+            mflag1 = 1;
+            mflag2 = 0;
+            programState = MESSAGE_READY;
+        }
+        if (buttoncounter == 2 && ( abs(ay) >= 0.5 || abs(ax) >= 0.5)){
+            mflag1 = 0;
+            mflag2 = 1;
+            programState = MESSAGE_READY;
+                }
         // Sleep 100ms
         Task_sleep(100000 / Clock_tickPeriod);
     }
@@ -226,30 +323,13 @@ void sensorTaskFxn(UArg arg0, UArg arg1) {
 }
 
 
-// taskFxn from buzzer_example.c from jtkj-sensortag-examples
-Void buzzerTaskFxn(UArg arg0, UArg arg1) {
-
-  while (1) {
-    buzzerOpen(hBuzzer);
-    buzzerSetFrequency(1000);
-    Task_sleep(50000 / Clock_tickPeriod);
-    buzzerClose();
-
-    Task_sleep(950000 / Clock_tickPeriod); // piippaa nopeasti, melkein yhtäjaksoisesti, jos ottaa pois
-  }
-
-}
-
-
-Int main(void) {
+    Int main(void) {
 
     // Task variables
     Task_Handle sensorTaskHandle;
     Task_Params sensorTaskParams;
     Task_Handle uartTaskHandle;
     Task_Params uartTaskParams;
-    Task_Handle buzzerTaskHandle;
-    Task_Params buzzerTaskParams;
 
     // Initialize board, I2C and UART
     Board_initGeneral();
@@ -267,12 +347,6 @@ Int main(void) {
     buttonHandle0 = PIN_open(&buttonState0, button0Config);
     if(!buttonHandle0) {
        System_abort("Error initializing button pin\n");
-    }
-
-    // Buzzer käyttöön ohjelmassa
-    hBuzzer = PIN_open(&sBuzzer, cBuzzer);
-    if (hBuzzer == NULL) {
-      System_abort("Pin open failed!");
     }
 
     // Painonapille keskeytyksen käsittellijä
@@ -309,17 +383,6 @@ Int main(void) {
     if (uartTaskHandle == NULL) {
         System_abort("Task create failed!");
     }
-
-    // buzzer task
-    Task_Params_init(&buzzerTaskParams);
-    buzzerTaskParams.stackSize = STACKSIZE;
-    buzzerTaskParams.stack = &buzzerTaskStack;
-    buzzerTaskParams.priority=2;
-    buzzerTaskHandle = Task_create(buzzerTaskFxn, &buzzerTaskParams, NULL);
-    if (buzzerTaskHandle == NULL) {
-       System_abort("Task create failed!");
-     }
-
 
     /* Sanity check */
     System_printf("Hello world!\n");
